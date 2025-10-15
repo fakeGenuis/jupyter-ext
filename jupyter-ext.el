@@ -144,19 +144,33 @@ SN is the value of header-args `:session'."
 
 ;;;###autoload
 (defun jupyter-org-next-executable (&optional arg)
-  "Jump to next org executable.
-Include `#+CALL:' besides src block.
-With optional prefix argument ARG, jump forward ARG many source blocks."
+  "Move to the next executable block and adjust window display."
   (interactive "p")
-  (org-next-block arg nil (jupyter-org--executable-block-regexp)))
+  (org-next-block arg nil (jupyter-org--executable-block-regexp))
+  (when-let* ((bounds (jupyter-org-src-block-bounds))
+              (beg (car bounds))
+              (raw-end (cdr bounds))
+              (end (max (1- raw-end) beg)))
+    ;; If both start and end are fully visible already, do nothing
+    (unless (and (pos-visible-in-window-p beg)
+                 (pos-visible-in-window-p end))
+      (if (> (count-screen-lines beg end t) (window-body-height))
+          ;; Block taller than window: put start at the top, ignore end
+          (progn (goto-char beg) (recenter 0))
+        ;; Block fits: place end at the bottom, keep point where it is
+        (save-excursion (goto-char end) (recenter -1))))))
 
-;;;###autoload
+;;;autoload
 (defun jupyter-org-previous-executable (&optional arg)
-  "Jump to previous org executable.
-Include `#+CALL:' besides src block.
-With optional prefix argument ARG, jump backward ARG many source blocks."
+  "Move to the previous executable block.
+If its start was above the previously visible window (i.e., not visible before
+moving), recenter to put point at the top; otherwise do nothing."
   (interactive "p")
-  (org-next-block arg t (jupyter-org--executable-block-regexp)))
+  (let ((old-start (window-start)))           ; remember current window start
+    (org-next-block arg t (jupyter-org--executable-block-regexp))
+    ;; If new point is above previous window-start, it wasn't visible before.
+    (when (< (point) old-start)
+      (recenter 0))))
 
 (defun jupyter-org-add-src-block-below ()
   "Add an empty src block below closest src block."
